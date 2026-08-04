@@ -49,6 +49,10 @@ contract BountyChain {
         uint maxBudget;
         address client;
         BountyStatus status;
+
+        uint bidAmount;
+        uint escrowAmount;
+
     }
     mapping (uint => bounty) public bounties;
     uint public bountyCount;
@@ -57,7 +61,7 @@ contract BountyChain {
         string memory _ipfsBountyDetailsHash,
         uint _maxBudget
     ) public {
-        if (users[msg.sender].isRegistered == true && users[msg.sender].role == Role.client) {
+        if (users[msg.sender].isRegistered == true && users[msg.sender].role == Role.client ) {
             if (_maxBudget <= 0) {
                 revert("Max budget must be greater than zero");
             }else{
@@ -65,11 +69,39 @@ contract BountyChain {
                 bounties[bountyCount].maxBudget = _maxBudget;
                 bounties[bountyCount].client = msg.sender;
                 bounties[bountyCount].status = BountyStatus.Open;
-            
                 bountyCount++;
             }
         }else {
             revert("User not registered or not a client");
+        }
+    }
+
+/// === Bid === ///
+
+    struct bid{
+        address freelancer;
+        uint bidAmount;
+    }
+    mapping (uint => bid[]) public bids;
+
+    function createBid (
+        uint _bountyId,
+        uint _bidAmount
+    ) public {
+        if (users[msg.sender].isRegistered == true && users[msg.sender].role == Role.Freelancer && users[msg.sender].reputation >= 40) {
+            if (bounties[_bountyId].status != BountyStatus.Open) {
+                revert("Bounty is not open for bidding");
+            }
+            if (_bidAmount <= 0 || _bidAmount > bounties[_bountyId].maxBudget) {
+                revert("Bid amount must be greater than zero and must not be more then the max budget");
+            }else{
+                bids[_bountyId].push(bid({
+                    freelancer: msg.sender,
+                    bidAmount: _bidAmount
+                }));
+            }
+        }else {
+            revert("User not registered or not a freelancer or reputation too low");
         }
     }
 
