@@ -50,8 +50,12 @@ contract BountyChain {
         address client;
         BountyStatus status;
 
+        address selectedFreelancer;
         uint bidAmount;
         uint escrowAmount;
+
+        string ipfsWorkFileHash;
+        bool workSubmitted;
 
     }
     mapping (uint => bounty) public bounties;
@@ -105,4 +109,35 @@ contract BountyChain {
         }
     }
 
+/// === Bid Selection & Escrow Fund === ///
+    function selectBid(uint _bountyId, uint _bidIndex) public payable {
+        if (users[msg.sender].isRegistered == true && users[msg.sender].role == Role.client) {
+            if (bounties[_bountyId].status != BountyStatus.Open) {
+                revert("Bounty is not open for bid selection");
+            }
+            if (bounties[_bountyId].client != msg.sender) {
+                revert("Only the client who created the bounty can select a bid");
+            }
+            if (bids[_bountyId].length <= _bidIndex) {
+                revert("Invalid bid index");
+            }else{
+                bounties[_bountyId].selectedFreelancer = bids[_bountyId][_bidIndex].freelancer;
+                bounties[_bountyId].bidAmount = bids[_bountyId][_bidIndex].bidAmount;
+                if (msg.value < bounties[_bountyId].bidAmount) {
+                    revert("Insufficient escrow amount");
+                }
+                uint refund = msg.value - bounties[_bountyId].bidAmount;
+
+                if (refund > 0) {
+                    payable(msg.sender).transfer(refund);
+                }
+
+                bounties[_bountyId].escrowAmount = bounties[_bountyId].bidAmount;
+                bounties[_bountyId].status = BountyStatus.Locked;
+                
+            }
+        }else {
+            revert("User not registered or not a client");
+        }
+    }
 }
