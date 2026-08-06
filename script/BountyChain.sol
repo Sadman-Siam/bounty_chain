@@ -109,9 +109,6 @@ contract BountyChain {
             if (bounties[_bountyId].status != BountyStatus.Open) {
                 revert("Bounty is not open for bidding");
             }
-            if (bids[_bountyId].freelancer == msg.sender) {
-                revert("Client cannot bid on their own bounty");
-            }
             if (_bidAmount <= 0 || _bidAmount > bounties[_bountyId].maxBudget) {
                 revert("Bid amount must be greater than zero and must not be more then the max budget");
             }else{
