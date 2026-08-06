@@ -13,6 +13,7 @@ contract BountyChain {
         bool isRegistered;
     }
     mapping (address => user) public users;
+    address[] public arbiters;
 
     function setUser(
         string memory _name, 
@@ -28,6 +29,13 @@ contract BountyChain {
                     users[msg.sender].ipfsAvatarHash = _ipfsAvatarHash;
                     users[msg.sender].reputation = 100;
                     users[msg.sender].isRegistered = true; 
+                }else if (_role == Role.Arbiter){
+                    users[msg.sender].name = _name;
+                    users[msg.sender].role = _role;
+                    users[msg.sender].ipfsAvatarHash = _ipfsAvatarHash;
+                    users[msg.sender].reputation = 0;
+                    users[msg.sender].isRegistered = true;
+                    arbiters.push(msg.sender);
                 }else{
                     users[msg.sender].name = _name;
                     users[msg.sender].role = _role;
@@ -41,6 +49,9 @@ contract BountyChain {
     function getUser(address _address) view public returns(user memory){
         return users[_address];
     }
+    function getArbiters() public view returns(address[] memory) {
+    return arbiters;
+}
 
 /// === Bounty === ///
     enum BountyStatus { Open, Locked, Disputed, Resolved }
@@ -56,6 +67,8 @@ contract BountyChain {
 
         string ipfsWorkFileHash;
         bool workSubmitted;
+
+        address assignedArbiter;
 
     }
     mapping (uint => bounty) public bounties;
@@ -96,6 +109,9 @@ contract BountyChain {
             if (bounties[_bountyId].status != BountyStatus.Open) {
                 revert("Bounty is not open for bidding");
             }
+            if (bids[_bountyId].freelancer == msg.sender) {
+                revert("Client cannot bid on their own bounty");
+            }
             if (_bidAmount <= 0 || _bidAmount > bounties[_bountyId].maxBudget) {
                 revert("Bid amount must be greater than zero and must not be more then the max budget");
             }else{
@@ -129,7 +145,8 @@ contract BountyChain {
                 uint refund = msg.value - bounties[_bountyId].bidAmount;
 
                 if (refund > 0) {
-                    payable(msg.sender).transfer(refund);
+                    (bool success, ) = payable(msg.sender).call{value: refund}("");
+                    require(success, "Refund failed");
                 }
 
                 bounties[_bountyId].escrowAmount = bounties[_bountyId].bidAmount;
@@ -140,4 +157,177 @@ contract BountyChain {
             revert("User not registered or not a client");
         }
     }
+
+/// === Work Submission === ///
+mapping(address => uint) public withdrawableBalance;
+
+    function submitWork(uint _bountyId, string memory _ipfsWorkFileHash) public {
+        if (users[msg.sender].isRegistered == true && users[msg.sender].role == Role.Freelancer) {
+            if (bounties[_bountyId].status != BountyStatus.Locked) {
+                revert("Bounty is not locked for work submission");
+            }
+            if (bounties[_bountyId].workSubmitted) {
+                revert("Work has already been submitted for this bounty");
+            }
+            if (bounties[_bountyId].selectedFreelancer != msg.sender) {
+                revert("Only the selected freelancer can submit work");
+            }else{
+                bounties[_bountyId].ipfsWorkFileHash = _ipfsWorkFileHash;
+                bounties[_bountyId].workSubmitted = true;
+            }
+        }else {
+            revert("User not registered or not a freelancer");
+        }
+    }
+
+/// === Dispute === /// 
+function disputeWork(
+    uint _bountyId,
+    address _arbiter
+    ) public {
+
+        if (!users[msg.sender].isRegistered ||
+            users[msg.sender].role != Role.client) {
+            revert("Only registered clients can dispute");
+        }
+
+        if (bounties[_bountyId].client != msg.sender) {
+            revert("Not your bounty");
+        }
+
+        if (bounties[_bountyId].status != BountyStatus.Locked) {
+            revert("Bounty is not locked");
+        }
+
+        if (!users[_arbiter].isRegistered ||
+            users[_arbiter].role != Role.Arbiter) {
+            revert("Invalid arbiter");
+        }
+
+        bounties[_bountyId].assignedArbiter = _arbiter;
+        bounties[_bountyId].status = BountyStatus.Disputed;
+    }
+
+function getMyDisputes()
+    public
+    view
+    returns(uint[] memory)
+    {
+        uint count = 0;
+
+        for(uint i = 0; i < bountyCount; i++) {
+            if(
+                bounties[i].assignedArbiter == msg.sender &&
+                bounties[i].status == BountyStatus.Disputed
+            ){
+                count++;
+            }
+        }
+
+        uint[] memory myDisputes = new uint[](count);
+
+        uint index = 0;
+
+        for(uint i = 0; i < bountyCount; i++) {
+            if(
+                bounties[i].assignedArbiter == msg.sender &&
+                bounties[i].status == BountyStatus.Disputed
+            ){
+                myDisputes[index] = i;
+                index++;
+            }
+        }
+
+        return myDisputes;
+    }
+
+/// === Approve Work === ///
+function approveWork(uint _bountyId) public {
+    
+    if(msg.sender != bounties[_bountyId].client){
+        revert("Not the client");
+    }
+    if(!bounties[_bountyId].workSubmitted){
+        revert("Work not submitted yet");
+    }
+
+    uint fee =
+        (bounties[_bountyId].escrowAmount * 2) / 100;
+
+    uint payout =
+        bounties[_bountyId].escrowAmount - fee;
+
+    withdrawableBalance[
+        bounties[_bountyId].selectedFreelancer
+    ] += payout;
+
+    withdrawableBalance[msg.sender] += fee;
+
+    users[
+        bounties[_bountyId].selectedFreelancer
+    ].reputation += 15;
+
+    bounties[_bountyId].status =
+        BountyStatus.Resolved;
+}
+
+
+/// === Resolve === ///
+
+/// === Approve Freelancer === ///
+function approveFreelancer(uint _bountyId) public {
+
+    if(msg.sender != bounties[_bountyId].assignedArbiter){
+        revert("Not assigned arbiter");
+    }
+    if(bounties[_bountyId].workSubmitted){
+        revert("Work not submitted yet");
+    }
+
+    uint fee =
+        (bounties[_bountyId].escrowAmount * 2) / 100;
+
+    uint payout =
+        bounties[_bountyId].escrowAmount - fee;
+
+    withdrawableBalance[
+        bounties[_bountyId].selectedFreelancer
+    ] += payout;
+
+    withdrawableBalance[msg.sender] += fee;
+
+    users[
+        bounties[_bountyId].selectedFreelancer
+    ].reputation += 15;
+
+    bounties[_bountyId].status =
+        BountyStatus.Resolved;
+}
+
+/// === Refund Client === ///
+function refundClient(uint _bountyId) public {
+
+    if(msg.sender != bounties[_bountyId].assignedArbiter){
+        revert("Not assigned arbiter");
+    }
+
+    withdrawableBalance[
+        bounties[_bountyId].client
+    ] += bounties[_bountyId].escrowAmount;
+
+    bounties[_bountyId].status =
+        BountyStatus.Resolved;
+    
+    bounties[_bountyId].escrowAmount = 0;
+}
+
+/// === Withdraw === ///
+function withdraw() public {
+    uint amount = withdrawableBalance[msg.sender];
+    if(amount == 0){
+        revert("No funds to withdraw");
+    }
+    withdrawableBalance[msg.sender] = 0;
+    (bool success, ) = payable(msg.sender).call{value: amount}("");
+    require(success, "Withdrawal failed");
 }
