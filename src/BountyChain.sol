@@ -52,11 +52,12 @@ event Withdrawal(
         string name;
         Role role;
         string ipfsAvatarHash;
-        uint reputation;
+        int reputation;
         bool isRegistered;
     }
     mapping (address => user) public users;
     address[] public arbiters;
+    mapping(address => uint) public withdrawableBalance;
 
     function setUser(
         string memory _name, 
@@ -73,6 +74,7 @@ event Withdrawal(
                     users[msg.sender].reputation = 100;
                     users[msg.sender].isRegistered = true; 
                 }else if (_role == Role.Arbiter){
+                    require(arbiters.length == 0, "Arbiter already registered");
                     users[msg.sender].name = _name;
                     users[msg.sender].role = _role;
                     users[msg.sender].ipfsAvatarHash = _ipfsAvatarHash;
@@ -203,7 +205,7 @@ event Withdrawal(
     }
 
 /// === Work Submission === ///
-mapping(address => uint) public withdrawableBalance;
+
 
     function submitWork(uint _bountyId, string memory _ipfsWorkFileHash) public {
         if (users[msg.sender].isRegistered == true && users[msg.sender].role == Role.Freelancer) {
@@ -288,37 +290,25 @@ function getMyDisputes()
         return myDisputes;
     }
 
-/// === Approve Work === ///
+/// === Approve Work By Client=== ///
 function approveWork(uint _bountyId) public {
-    
     if(msg.sender != bounties[_bountyId].client){
         revert("Not the client");
     }
     if(!bounties[_bountyId].workSubmitted){
         revert("Work not submitted yet");
     }
+    require(arbiters.length > 0, "No arbiter registered"); 
+    uint fee = (bounties[_bountyId].escrowAmount * 2) / 100;
+    uint payout = bounties[_bountyId].escrowAmount - fee;
 
-    uint fee =
-        (bounties[_bountyId].escrowAmount * 2) / 100;
+    withdrawableBalance[bounties[_bountyId].selectedFreelancer] += payout;
+    withdrawableBalance[arbiters[0]] += fee; 
 
-    uint payout =
-        bounties[_bountyId].escrowAmount - fee;
-
-    withdrawableBalance[
-        bounties[_bountyId].selectedFreelancer
-    ] += payout;
-
-    withdrawableBalance[msg.sender] += fee;
-
-    users[
-        bounties[_bountyId].selectedFreelancer
-    ].reputation += 15;
-
-    bounties[_bountyId].status =
-        BountyStatus.Resolved;
+    users[bounties[_bountyId].selectedFreelancer].reputation += 15;
+    bounties[_bountyId].status = BountyStatus.Resolved;
     emit WorkApproved(_bountyId, bounties[_bountyId].selectedFreelancer);
 }
-
 
 /// === Resolve === ///
 
@@ -328,7 +318,7 @@ function approveFreelancer(uint _bountyId) public {
     if(msg.sender != bounties[_bountyId].assignedArbiter){
         revert("Not assigned arbiter");
     }
-    if(bounties[_bountyId].workSubmitted){
+    if(!bounties[_bountyId].workSubmitted){
         revert("Work not submitted yet");
     }
 
@@ -368,17 +358,21 @@ function refundClient(uint _bountyId) public {
         BountyStatus.Resolved;
     
     bounties[_bountyId].escrowAmount = 0;
+    users[
+        bounties[_bountyId].selectedFreelancer
+    ].reputation -= 30;
     emit DisputeResolved(_bountyId, msg.sender);
 }
 
 /// === Withdraw === ///
-function withdraw() public {
-    uint amount = withdrawableBalance[msg.sender];
-    if(amount == 0){
-        revert("No funds to withdraw");
+    function withdraw() public {
+        uint amount = withdrawableBalance[msg.sender];
+        if(amount == 0){
+            revert("No funds to withdraw");
+        }
+        withdrawableBalance[msg.sender] = 0;
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        require(success, "Withdrawal failed");
+        emit Withdrawal(msg.sender, amount);
     }
-    withdrawableBalance[msg.sender] = 0;
-    (bool success, ) = payable(msg.sender).call{value: amount}("");
-    require(success, "Withdrawal failed");
-    emit Withdrawal(msg.sender, amount);
 }
