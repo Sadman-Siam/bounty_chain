@@ -2,6 +2,49 @@
 pragma solidity ^0.8.13;
 
 contract BountyChain {
+/// ==== EVENTS ===///
+event UserRegistered(
+    address indexed user,
+    Role role
+);
+event BountyCreated(
+    uint indexed bountyId,
+    address indexed client,
+    uint budget
+);
+event BidPlaced(
+    uint indexed bountyId,
+    address indexed freelancer,
+    uint amount
+);
+event BidSelected(
+    uint indexed bountyId,
+    address indexed freelancer,
+    uint amount
+);
+event WorkSubmitted(
+    uint indexed bountyId,
+    address indexed freelancer,
+    string ipfsHash
+);
+event WorkApproved(
+    uint indexed bountyId,
+    address indexed freelancer
+);
+event DisputeRaised(
+    uint indexed bountyId,
+    address indexed arbiter
+);
+event DisputeResolved(
+    uint indexed bountyId,
+    address indexed arbiter
+);
+event Withdrawal(
+    address indexed user,
+    uint amount
+);
+
+
 
 ///=== User Register ===///
     enum Role { Arbiter, client, Freelancer}
@@ -43,6 +86,7 @@ contract BountyChain {
                     users[msg.sender].reputation = 0;
                     users[msg.sender].isRegistered = true;
                 }
+                emit UserRegistered(msg.sender, _role);
             }
             
         }
@@ -86,7 +130,9 @@ contract BountyChain {
                 bounties[bountyCount].maxBudget = _maxBudget;
                 bounties[bountyCount].client = msg.sender;
                 bounties[bountyCount].status = BountyStatus.Open;
+                emit BountyCreated(bountyCount, msg.sender, _maxBudget);
                 bountyCount++;
+
             }
         }else {
             revert("User not registered or not a client");
@@ -116,6 +162,7 @@ contract BountyChain {
                     freelancer: msg.sender,
                     bidAmount: _bidAmount
                 }));
+                emit BidPlaced(_bountyId, msg.sender, _bidAmount);
             }
         }else {
             revert("User not registered or not a freelancer or reputation too low");
@@ -148,7 +195,7 @@ contract BountyChain {
 
                 bounties[_bountyId].escrowAmount = bounties[_bountyId].bidAmount;
                 bounties[_bountyId].status = BountyStatus.Locked;
-                
+                emit BidSelected(_bountyId, bounties[_bountyId].selectedFreelancer, bounties[_bountyId].bidAmount);
             }
         }else {
             revert("User not registered or not a client");
@@ -170,6 +217,7 @@ mapping(address => uint) public withdrawableBalance;
                 revert("Only the selected freelancer can submit work");
             }else{
                 bounties[_bountyId].ipfsWorkFileHash = _ipfsWorkFileHash;
+                emit WorkSubmitted(_bountyId, msg.sender, _ipfsWorkFileHash);
                 bounties[_bountyId].workSubmitted = true;
             }
         }else {
@@ -200,6 +248,8 @@ function disputeWork(
             users[_arbiter].role != Role.Arbiter) {
             revert("Invalid arbiter");
         }
+
+        emit DisputeRaised(_bountyId, _arbiter);
 
         bounties[_bountyId].assignedArbiter = _arbiter;
         bounties[_bountyId].status = BountyStatus.Disputed;
@@ -266,6 +316,7 @@ function approveWork(uint _bountyId) public {
 
     bounties[_bountyId].status =
         BountyStatus.Resolved;
+    emit WorkApproved(_bountyId, bounties[_bountyId].selectedFreelancer);
 }
 
 
@@ -299,6 +350,7 @@ function approveFreelancer(uint _bountyId) public {
 
     bounties[_bountyId].status =
         BountyStatus.Resolved;
+    emit DisputeResolved(_bountyId, msg.sender);
 }
 
 /// === Refund Client === ///
@@ -316,6 +368,7 @@ function refundClient(uint _bountyId) public {
         BountyStatus.Resolved;
     
     bounties[_bountyId].escrowAmount = 0;
+    emit DisputeResolved(_bountyId, msg.sender);
 }
 
 /// === Withdraw === ///
@@ -327,4 +380,5 @@ function withdraw() public {
     withdrawableBalance[msg.sender] = 0;
     (bool success, ) = payable(msg.sender).call{value: amount}("");
     require(success, "Withdrawal failed");
+    emit Withdrawal(msg.sender, amount);
 }
