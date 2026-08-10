@@ -1,122 +1,148 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useEffect, useState, useCallback } from "react";
+import { useWallet } from "./hooks/useWallet";
+import { useContract } from "./hooks/useContract";
+import { useBountyFeed } from "./hooks/useBountyFeed";
+import { useContractEvents } from "./hooks/useContractEvents";
+import { RegisterForm } from "./components/RegisterForm";
+import { PostBountyForm } from "./components/PostBountyForm";
+import { BountyFeed } from "./components/BountyFeed";
+import { MyBountiesSection } from "./components/MyBountiesSection";
+import { ArbiterDisputeDashboard } from "./components/ArbiterDisputeDashboard";
+import { ClaimFundsCard } from "./components/ClaimFundsCard";
+import "./App.css";
+
+// Mirrors the contract's enum Role { Arbiter, client, Freelancer }
+const ROLE_LABELS = ["Arbiter", "Client", "Freelancer"];
 
 function App() {
-  const [count, setCount] = useState(0)
+  const { address, signer, chainId, isConnecting, isWrongNetwork, error, connect, isConnected } =
+    useWallet();
+  const contract = useContract(signer);
+
+  // Bumped by useContractEvents whenever any relevant contract event fires,
+  // so every data-fetching hook below re-reads fresh state from the chain —
+  // this is what makes the UI update live across browser windows (spec 3.5).
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const bumpRefreshTrigger = useCallback(() => setRefreshTrigger((t) => t + 1), []);
+  useContractEvents(contract, bumpRefreshTrigger);
+
+  const { bounties, loading: loadingBounties, error: bountiesError, refetch: refetchBounties } =
+    useBountyFeed(contract, refreshTrigger);
+
+  const [userInfo, setUserInfo] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(false);
+
+  // Whenever the connected address or contract instance changes, re-read
+  // the on-chain registry so the dashboard reflects the current wallet.
+  const fetchUser = useCallback(() => {
+    if (!contract || !address) {
+      setUserInfo(null);
+      return;
+    }
+
+    setLoadingUser(true);
+    contract
+      .getUser(address)
+      .then((result) => {
+        setUserInfo({
+          name: result.name,
+          role: Number(result.role),
+          reputation: result.reputation, // signed int per the contract's `int reputation`
+          isRegistered: result.isRegistered,
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to read user from contract:", err);
+      })
+      .finally(() => {
+        setLoadingUser(false);
+      });
+  }, [contract, address, refreshTrigger]);
+
+  useEffect(() => {
+    fetchUser();
+  }, [fetchUser]);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
+    <div style={{ maxWidth: 720, margin: "40px auto", fontFamily: "sans-serif" }}>
+      <h1>BountyPulse</h1>
+
+      {!isConnected && (
+        <button onClick={connect} disabled={isConnecting}>
+          {isConnecting ? "Connecting..." : "Connect Wallet"}
         </button>
-      </section>
+      )}
 
-      <div className="ticks"></div>
+      {error && <p style={{ color: "crimson" }}>{error}</p>}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      {isConnected && (
+        <div>
+          <p>
+            <strong>Connected:</strong> {address}
+          </p>
+
+          {isWrongNetwork && (
+            <p style={{ color: "crimson" }}>
+              Wrong network — please switch MetaMask to the local Anvil chain (Chain ID 31337).
+            </p>
+          )}
+
+          {loadingUser && <p>Loading registry info...</p>}
+
+          {!loadingUser && userInfo && (
+            <div>
+              {userInfo.isRegistered ? (
+                <>
+                  <p>
+                    <strong>Name:</strong> {userInfo.name}
+                  </p>
+                  <p>
+                    <strong>Role:</strong> {ROLE_LABELS[userInfo.role]}
+                  </p>
+                  <p>
+                    <strong>Reputation:</strong> {userInfo.reputation.toString()}
+                  </p>
+
+                  <ClaimFundsCard contract={contract} address={address} refreshTrigger={refreshTrigger} />
+
+                  {/* Only Client accounts (role === 1) can post a bounty */}
+                  {userInfo.role === 1 && (
+                    <PostBountyForm contract={contract} onPosted={refetchBounties} />
+                  )}
+
+                  <hr style={{ margin: "24px 0" }} />
+
+                  <MyBountiesSection contract={contract} address={address} refreshTrigger={refreshTrigger} />
+
+                  {/* Arbiter accounts (role === 0) get a dedicated dispute queue */}
+                  {userInfo.role === 0 && (
+                    <>
+                      <hr style={{ margin: "24px 0" }} />
+                      <ArbiterDisputeDashboard contract={contract} refreshTrigger={refreshTrigger} />
+                    </>
+                  )}
+
+                  <hr style={{ margin: "24px 0" }} />
+
+                  <BountyFeed
+                    bounties={bounties}
+                    loading={loadingBounties}
+                    error={bountiesError}
+                    refetch={refetchBounties}
+                    contract={contract}
+                    address={address}
+                    role={userInfo.role}
+                  />
+                </>
+              ) : (
+                <RegisterForm contract={contract} onRegistered={fetchUser} />
+              )}
+            </div>
+          )}
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      )}
+    </div>
+  );
 }
 
-export default App
+export default App;
