@@ -11,29 +11,38 @@ import { ArbiterDisputeDashboard } from "./components/ArbiterDisputeDashboard";
 import { ClaimFundsCard } from "./components/ClaimFundsCard";
 import "./App.css";
 
-// Mirrors the contract's enum Role { Arbiter, client, Freelancer }
 const ROLE_LABELS = ["Arbiter", "Client", "Freelancer"];
 
 function App() {
-  const { address, signer, chainId, isConnecting, isWrongNetwork, error, connect, isConnected } =
-    useWallet();
+  const {
+    address,
+    signer,
+    chainId,
+    isConnecting,
+    isWrongNetwork,
+    error,
+    connect,
+    isConnected,
+  } = useWallet();
   const contract = useContract(signer);
 
-  // Bumped by useContractEvents whenever any relevant contract event fires,
-  // so every data-fetching hook below re-reads fresh state from the chain —
-  // this is what makes the UI update live across browser windows (spec 3.5).
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const bumpRefreshTrigger = useCallback(() => setRefreshTrigger((t) => t + 1), []);
+  const bumpRefreshTrigger = useCallback(
+    () => setRefreshTrigger((t) => t + 1),
+    [],
+  );
   useContractEvents(contract, bumpRefreshTrigger);
 
-  const { bounties, loading: loadingBounties, error: bountiesError, refetch: refetchBounties } =
-    useBountyFeed(contract, refreshTrigger);
+  const {
+    bounties,
+    loading: loadingBounties,
+    error: bountiesError,
+    refetch: refetchBounties,
+  } = useBountyFeed(contract, refreshTrigger);
 
   const [userInfo, setUserInfo] = useState(null);
   const [loadingUser, setLoadingUser] = useState(false);
 
-  // Whenever the connected address or contract instance changes, re-read
-  // the on-chain registry so the dashboard reflects the current wallet.
   const fetchUser = useCallback(() => {
     if (!contract || !address) {
       setUserInfo(null);
@@ -64,8 +73,10 @@ function App() {
   }, [fetchUser]);
 
   return (
-    <div style={{ maxWidth: 720, margin: "40px auto", fontFamily: "sans-serif" }}>
-      <h1>BountyPulse</h1>
+    <div
+      style={{ maxWidth: 720, margin: "40px auto", fontFamily: "sans-serif" }}
+    >
+      <h1>BountyChain</h1>
 
       {!isConnected && (
         <button onClick={connect} disabled={isConnecting}>
@@ -83,7 +94,8 @@ function App() {
 
           {isWrongNetwork && (
             <p style={{ color: "crimson" }}>
-              Wrong network — please switch MetaMask to the local Anvil chain (Chain ID 31337).
+              Wrong network — please switch MetaMask to the local Anvil chain
+              (Chain ID 31337).
             </p>
           )}
 
@@ -100,25 +112,40 @@ function App() {
                     <strong>Role:</strong> {ROLE_LABELS[userInfo.role]}
                   </p>
                   <p>
-                    <strong>Reputation:</strong> {userInfo.reputation.toString()}
+                    <strong>Reputation:</strong>{" "}
+                    {userInfo.reputation.toString()}
                   </p>
 
-                  <ClaimFundsCard contract={contract} address={address} refreshTrigger={refreshTrigger} />
+                  <ClaimFundsCard
+                    contract={contract}
+                    address={address}
+                    refreshTrigger={refreshTrigger}
+                  />
 
-                  {/* Only Client accounts (role === 1) can post a bounty */}
+                  {/* Client */}
                   {userInfo.role === 1 && (
-                    <PostBountyForm contract={contract} onPosted={refetchBounties} />
+                    <PostBountyForm
+                      contract={contract}
+                      onPosted={refetchBounties}
+                    />
                   )}
 
                   <hr style={{ margin: "24px 0" }} />
 
-                  <MyBountiesSection contract={contract} address={address} refreshTrigger={refreshTrigger} />
+                  <MyBountiesSection
+                    contract={contract}
+                    address={address}
+                    refreshTrigger={refreshTrigger}
+                  />
 
-                  {/* Arbiter accounts (role === 0) get a dedicated dispute queue */}
+                  {/* Arbiter */}
                   {userInfo.role === 0 && (
                     <>
                       <hr style={{ margin: "24px 0" }} />
-                      <ArbiterDisputeDashboard contract={contract} refreshTrigger={refreshTrigger} />
+                      <ArbiterDisputeDashboard
+                        contract={contract}
+                        refreshTrigger={refreshTrigger}
+                      />
                     </>
                   )}
 

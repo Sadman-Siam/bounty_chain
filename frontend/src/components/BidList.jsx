@@ -1,4 +1,4 @@
-import { formatEther } from "ethers";
+import { formatEther, parseEther } from "ethers";
 import { useState } from "react";
 
 function shortAddress(addr) {
@@ -9,23 +9,58 @@ function shortAddress(addr) {
  * Pure display + selection component. Bid data is fetched by the parent
  * (BountyCard, via useBids) so it can share the same bids array with
  * BidForm's refetch trigger without duplicating fetch logic.
+ *
+ * The amount sent to selectBid is editable (defaulting to the exact bid),
+ * not hardcoded — the contract deliberately accepts overpayment and refunds
+ * the difference in the same transaction (see selectBid's revert/refund
+ * logic), and this UI needs to be able to demonstrate that, not just the
+ * exact-payment happy path.
  */
 export function BidList({ bids, isOwner, contract, bountyId, onBidSelected }) {
   const [selectingIndex, setSelectingIndex] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [infoMessage, setInfoMessage] = useState(null);
+  // Keyed by bid index so each bid row has its own independent, editable amount.
+  const [amounts, setAmounts] = useState({});
 
-  async function handleSelect(bidIndex, bidAmountWei) {
+  function amountFor(bid) {
+    return amounts[bid.index] ?? formatEther(bid.amount);
+  }
+
+  async function handleSelect(bid) {
     setErrorMessage(null);
-    setSelectingIndex(bidIndex);
+    setInfoMessage(null);
+    setSelectingIndex(bid.index);
+
+    let valueWei;
     try {
-      // Send exactly the bid amount as escrow — the contract also accepts
-      // overpayment and refunds the difference, but there's no reason to
-      // rely on that path from the frontend when we already know the exact figure.
-      const tx = await contract.selectBid(bountyId, bidIndex, { value: bidAmountWei });
+      valueWei = parseEther(amountFor(bid));
+    } catch {
+      setErrorMessage("Invalid ETH amount.");
+      setSelectingIndex(null);
+      return;
+    }
+
+    try {
+      const tx = await contract.selectBid(bountyId, bid.index, { value: valueWei });
       await tx.wait();
+
+      if (valueWei > bid.amount) {
+        const credited = valueWei - bid.amount;
+        setInfoMessage(
+          `Sent ${formatEther(valueWei)} ETH — contract locked the exact bid (${formatEther(
+            bid.amount
+          )} ETH) and credited the ${formatEther(
+            credited
+          )} ETH excess to your Claim Funds balance above (not sent back to your wallet automatically — click Claim Funds to withdraw it).`
+        );
+      }
+
       onBidSelected?.();
     } catch (err) {
       console.error("Select bid failed:", err);
+      // If you send less than the bid amount, this is where you'll see the
+      // contract's "Insufficient escrow amount" revert surfaced verbatim.
       setErrorMessage(err.reason || err.shortMessage || err.message || "Failed to select bid.");
     } finally {
       setSelectingIndex(null);
@@ -40,6 +75,7 @@ export function BidList({ bids, isOwner, contract, bountyId, onBidSelected }) {
     <div>
       <p style={{ fontSize: 13, fontWeight: "bold", marginBottom: 4 }}>Bids ({bids.length})</p>
       {errorMessage && <p style={{ color: "crimson", fontSize: 13 }}>{errorMessage}</p>}
+      {infoMessage && <p style={{ color: "seagreen", fontSize: 13 }}>{infoMessage}</p>}
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {bids.map((b) => (
           <li
@@ -50,15 +86,29 @@ export function BidList({ bids, isOwner, contract, bountyId, onBidSelected }) {
               alignItems: "center",
               padding: "4px 0",
               fontSize: 13,
+              gap: 8,
             }}
           >
             <span>
-              {shortAddress(b.freelancer)} — {formatEther(b.amount)} ETH
+              {shortAddress(b.freelancer)} — bid: {formatEther(b.amount)} ETH
             </span>
+
             {isOwner && (
-              <button onClick={() => handleSelect(b.index, b.amount)} disabled={selectingIndex !== null}>
-                {selectingIndex === b.index ? "Selecting..." : "Select"}
-              </button>
+              <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={amountFor(b)}
+                  onChange={(e) => setAmounts((prev) => ({ ...prev, [b.index]: e.target.value }))}
+                  disabled={selectingIndex !== null}
+                  style={{ width: 100 }}
+                  title="ETH to send to escrow — defaults to the exact bid, but you can change it to see the contract's revert/pull-payment logic"
+                />
+                <button onClick={() => handleSelect(b)} disabled={selectingIndex !== null}>
+                  {selectingIndex === b.index ? "Selecting..." : "Select"}
+                </button>
+              </span>
             )}
           </li>
         ))}
