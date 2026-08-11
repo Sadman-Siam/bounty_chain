@@ -3,14 +3,10 @@ import { parseEther } from "ethers";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
 
-/**
- * Posts a new bounty: description -> pinned as JSON via the backend ->
- * CID -> contract.createBounty(cid, maxBudgetInWei).
- */
 export function PostBountyForm({ contract, onPosted }) {
   const [description, setDescription] = useState("");
   const [budgetEth, setBudgetEth] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | pinning | confirming | error
+  const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState(null);
 
   const isSubmitting = status === "pinning" || status === "confirming";
@@ -34,7 +30,7 @@ export function PostBountyForm({ contract, onPosted }) {
 
     let budgetWei;
     try {
-      budgetWei = parseEther(budgetEth); // e.g. "0.5" ETH -> 500000000000000000 Wei
+      budgetWei = parseEther(budgetEth);
     } catch {
       setErrorMessage("Invalid budget amount.");
       return;
@@ -65,13 +61,18 @@ export function PostBountyForm({ contract, onPosted }) {
       onPosted?.();
     } catch (err) {
       console.error("Failed to post bounty:", err);
-      setErrorMessage(err.message || "Failed to post bounty. Please try again.");
+      setErrorMessage(
+        err.message || "Failed to post bounty. Please try again.",
+      );
       setStatus("error");
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "flex", flexDirection: "column", gap: 12 }}
+    >
       <h2>Post a Bounty</h2>
 
       <label>

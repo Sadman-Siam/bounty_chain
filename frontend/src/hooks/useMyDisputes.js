@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 
-/**
- * Calls the contract's own getMyDisputes() — it already filters to bounties
- * where assignedArbiter == msg.sender && status == Disputed, so this is
- * exactly the "pinned to my dashboard" queue with no extra filtering needed
- * on the frontend.
- */
 export function useMyDisputes(contract, refreshTrigger) {
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -32,7 +26,7 @@ export function useMyDisputes(contract, refreshTrigger) {
             ipfsWorkFileHash: b.ipfsWorkFileHash,
             workSubmitted: b.workSubmitted,
           };
-        })
+        }),
       );
       setDisputes(details);
     } catch (err) {

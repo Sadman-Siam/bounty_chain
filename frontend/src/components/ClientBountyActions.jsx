@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useSoleArbiter } from "../hooks/useSoleArbiter";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
-const GATEWAY_URL = import.meta.env.VITE_PINATA_GATEWAY_URL; // optional, e.g. https://your-gateway.mypinata.cloud
+const GATEWAY_URL = import.meta.env.VITE_PINATA_GATEWAY_URL;
 
 export function ClientBountyActions({ contract, bounty, onActionComplete }) {
   const { arbiter, loading: loadingArbiter } = useSoleArbiter(contract);
@@ -18,7 +18,12 @@ export function ClientBountyActions({ contract, bounty, onActionComplete }) {
       onActionComplete?.();
     } catch (err) {
       console.error("Approve work failed:", err);
-      setErrorMessage(err.reason || err.shortMessage || err.message || "Failed to approve work.");
+      setErrorMessage(
+        err.reason ||
+          err.shortMessage ||
+          err.message ||
+          "Failed to approve work.",
+      );
     } finally {
       setStatus("idle");
     }
@@ -26,7 +31,9 @@ export function ClientBountyActions({ contract, bounty, onActionComplete }) {
 
   async function handleDispute() {
     if (!arbiter) {
-      setErrorMessage("No arbiter is registered on the platform yet — a dispute can't be raised.");
+      setErrorMessage(
+        "No arbiter is registered on the platform yet — a dispute can't be raised.",
+      );
       return;
     }
     setErrorMessage(null);
@@ -37,14 +44,23 @@ export function ClientBountyActions({ contract, bounty, onActionComplete }) {
       onActionComplete?.();
     } catch (err) {
       console.error("Dispute failed:", err);
-      setErrorMessage(err.reason || err.shortMessage || err.message || "Failed to raise dispute.");
+      setErrorMessage(
+        err.reason ||
+          err.shortMessage ||
+          err.message ||
+          "Failed to raise dispute.",
+      );
     } finally {
       setStatus("idle");
     }
   }
 
   if (!bounty.workSubmitted) {
-    return <p style={{ fontSize: 13, color: "#888" }}>Waiting for the freelancer to submit work.</p>;
+    return (
+      <p style={{ fontSize: 13, color: "#888" }}>
+        Waiting for the freelancer to submit work.
+      </p>
+    );
   }
 
   const workUrl = GATEWAY_URL
@@ -73,7 +89,9 @@ export function ClientBountyActions({ contract, bounty, onActionComplete }) {
         </button>
       </div>
 
-      {errorMessage && <p style={{ color: "crimson", fontSize: 13 }}>{errorMessage}</p>}
+      {errorMessage && (
+        <p style={{ color: "crimson", fontSize: 13 }}>{errorMessage}</p>
+      )}
     </div>
   );
 }

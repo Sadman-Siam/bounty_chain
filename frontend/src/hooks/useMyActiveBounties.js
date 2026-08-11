@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-// Mirrors `enum BountyStatus { Open, Locked, Disputed, Resolved }`
 const LOCKED = 1;
 const DISPUTED = 2;
 
-/**
- * Fetches every bounty and filters down to the ones the current wallet is
- * actively involved in (as the client who posted it, or the freelancer
- * selected to do the work), restricted to Locked/Disputed status — i.e.
- * "things that still need action from me." Open bounties belong in the
- * main feed; Resolved ones are done and don't need a dashboard entry.
- */
 export function useMyActiveBounties(contract, address, refreshTrigger) {
   const [bounties, setBounties] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,7 +35,7 @@ export function useMyActiveBounties(contract, address, refreshTrigger) {
             workSubmitted: b.workSubmitted,
             assignedArbiter: b.assignedArbiter,
           };
-        })
+        }),
       );
 
       const lowerAddress = address.toLowerCase();

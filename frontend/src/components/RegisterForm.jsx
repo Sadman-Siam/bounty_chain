@@ -2,25 +2,17 @@ import { useState } from "react";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
 
-// Must match the contract's `enum Role { Arbiter, client, Freelancer }` order exactly —
-// these are passed as raw uint8 values, so getting this wrong silently registers
-// someone as the wrong role.
 const ROLE_OPTIONS = [
   { label: "Arbiter", value: 0 },
   { label: "Client", value: 1 },
   { label: "Freelancer", value: 2 },
 ];
 
-/**
- * Registration form for a not-yet-registered wallet.
- * Flow: pick avatar file -> upload to backend (Pinata) -> get CID ->
- * call contract.setUser(name, role, cid) -> wait for confirmation -> notify parent.
- */
 export function RegisterForm({ contract, onRegistered }) {
   const [name, setName] = useState("");
-  const [role, setRole] = useState(ROLE_OPTIONS[1].value); // default to Client
+  const [role, setRole] = useState(ROLE_OPTIONS[1].value);
   const [avatarFile, setAvatarFile] = useState(null);
-  const [status, setStatus] = useState("idle"); // idle | uploading | confirming | error
+  const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState(null);
 
   const isSubmitting = status === "uploading" || status === "confirming";
@@ -43,7 +35,6 @@ export function RegisterForm({ contract, onRegistered }) {
     }
 
     try {
-      // Step 1: upload the avatar to the backend, which pins it to Pinata.
       setStatus("uploading");
       const formData = new FormData();
       formData.append("file", avatarFile);
@@ -60,10 +51,9 @@ export function RegisterForm({ contract, onRegistered }) {
 
       const { cid } = await uploadRes.json();
 
-      // Step 2: register on-chain with the resulting CID.
       setStatus("confirming");
       const tx = await contract.setUser(name.trim(), role, cid);
-      await tx.wait(); // wait for the transaction to be mined
+      await tx.wait();
 
       setStatus("idle");
       onRegistered?.();
@@ -75,7 +65,10 @@ export function RegisterForm({ contract, onRegistered }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "flex", flexDirection: "column", gap: 12 }}
+    >
       <h2>Register</h2>
 
       <label>

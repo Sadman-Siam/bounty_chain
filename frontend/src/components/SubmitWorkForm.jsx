@@ -2,13 +2,9 @@ import { useState } from "react";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
 
-/**
- * Freelancer uploads their finished work file -> pinned via the backend ->
- * CID -> contract.submitWork(bountyId, cid).
- */
 export function SubmitWorkForm({ contract, bountyId, onSubmitted }) {
   const [file, setFile] = useState(null);
-  const [status, setStatus] = useState("idle"); // idle | uploading | confirming | error
+  const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState(null);
 
   const isSubmitting = status === "uploading" || status === "confirming";
@@ -52,13 +48,21 @@ export function SubmitWorkForm({ contract, bountyId, onSubmitted }) {
       onSubmitted?.();
     } catch (err) {
       console.error("Work submission failed:", err);
-      setErrorMessage(err.reason || err.shortMessage || err.message || "Failed to submit work.");
+      setErrorMessage(
+        err.reason ||
+          err.shortMessage ||
+          err.message ||
+          "Failed to submit work.",
+      );
       setStatus("error");
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}
+    >
       <input
         type="file"
         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -69,7 +73,9 @@ export function SubmitWorkForm({ contract, bountyId, onSubmitted }) {
         {status === "confirming" && "Confirming..."}
         {(status === "idle" || status === "error") && "Submit Work"}
       </button>
-      {errorMessage && <span style={{ color: "crimson", fontSize: 13 }}>{errorMessage}</span>}
+      {errorMessage && (
+        <span style={{ color: "crimson", fontSize: 13 }}>{errorMessage}</span>
+      )}
     </form>
   );
 }
